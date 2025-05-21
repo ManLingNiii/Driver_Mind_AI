@@ -13,4 +13,3 @@ names:
   3: motor #機車(不含騎士)
   4: bike #腳踏車
   5: rider # ”二輪的“騎士
-  6: traffic light #紅綠燈/交通警示燈
