@@ -1,10 +1,8 @@
+
 import cv2
 import mediapipe as mp
 import numpy as np
 import time
-import tkinter as tk
-
-mp_face_mesh = mp.solutions.face_mesh
 
 def euclidean_distance(a, b):
     return np.linalg.norm(np.array(a) - np.array(b))
@@ -16,171 +14,106 @@ def eye_aspect_ratio(eye_landmarks):
     return (A + B) / (2.0 * C)
 
 def mouth_aspect_ratio(mouth_landmarks):
-    A = euclidean_distance(mouth_landmarks[13], mouth_landmarks[19])  # 上下中心
-    B = euclidean_distance(mouth_landmarks[14], mouth_landmarks[18])  # 上下兩側
-    C = euclidean_distance(mouth_landmarks[12], mouth_landmarks[16])  # 左右嘴角
+    A = euclidean_distance(mouth_landmarks[13], mouth_landmarks[19])
+    B = euclidean_distance(mouth_landmarks[14], mouth_landmarks[18])
+    C = euclidean_distance(mouth_landmarks[12], mouth_landmarks[16])
     return (A + B) / (2.0 * C)
 
-def start_drowsiness_detection(shared_alert):
-    FPS = 30
+def start_drowsiness_detection(shared_alert_list):
+    cap = cv2.VideoCapture(0)
+    mp_face_mesh = mp.solutions.face_mesh
+    face_mesh = mp_face_mesh.FaceMesh(max_num_faces=1, refine_landmarks=True,
+                                      min_detection_confidence=0.5, min_tracking_confidence=0.5)
+
     TIRED_SECONDS = 2.0
-    CONSEC_FRAMES = int(FPS * TIRED_SECONDS)
-    COUNTER = 0
-    ALARM_ON = False
-    ALARM_END_TIME = 0
-    ALERT_DURATION = 3
-
     EAR_CALIBRATION_TIME = 3
-    CALIBRATION_FRAMES = int(FPS * EAR_CALIBRATION_TIME)
-    calibration_ears = []
-    EAR_THRESHOLD = None
+    MAR_OPEN_THRESHOLD = 1.2
+    MAR_CLOSE_THRESHOLD = 0.7
+    YAWN_ALERT_THRESHOLD = 3
 
-    MAR_OPEN_THRESHOLD = 1.2  # 張嘴閾值
-    MAR_CLOSE_THRESHOLD = 0.7  # 閉嘴閾值（雙閾值判斷）
+    calibration_ears = []
+    calibration_done = False
+    calibration_start = time.time()
+    EAR_THRESHOLD = None
 
     YAWN_COUNT = 0
     yawn_flag = False
 
-    YAWN_ALARM_ON = False  # 哈欠警示旗標
-    YAWN_ALERT_COMPLETED = False  # 是否完成三次哈欠警示的標示
+    eye_close_start_time = None
 
-    cap = cv2.VideoCapture(0)
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            print("[WARNING] 無法從攝影機取得影像，退出")
+            break
 
-    with mp_face_mesh.FaceMesh(
-        max_num_faces=1,
-        refine_landmarks=True,
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5
-    ) as face_mesh:
+        frame = cv2.resize(frame, (640, 480))
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = face_mesh.process(rgb_frame)
 
-        frame_count = 0
-        calibration_done = False
-        calibration_start = time.time()
+        current_time = time.time()
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+        if results.multi_face_landmarks:
+            h, w, _ = frame.shape
+            landmarks = [(int(lm.x * w), int(lm.y * h)) for lm in results.multi_face_landmarks[0].landmark]
 
-            frame = cv2.resize(frame, (640, 480))
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            left_eye = [landmarks[i] for i in [33, 160, 158, 133, 153, 144]]
+            right_eye = [landmarks[i] for i in [362, 385, 387, 263, 373, 380]]
+            mouth = [landmarks[i] for i in [78, 81, 13, 311, 308, 402, 14, 87, 95, 88, 178, 317, 82, 81, 80, 191, 88, 178, 87, 14]]
 
-            results = face_mesh.process(rgb_frame)
+            mouth_mar_landmarks = {
+                12: mouth[5], 13: mouth[2], 14: mouth[6],
+                16: mouth[4], 18: mouth[17], 19: mouth[19]
+            }
 
-            if results.multi_face_landmarks:
-                face_landmarks = results.multi_face_landmarks[0]
+            leftEAR = eye_aspect_ratio(left_eye)
+            rightEAR = eye_aspect_ratio(right_eye)
+            ear = (leftEAR + rightEAR) / 2.0
+            mar = mouth_aspect_ratio(mouth_mar_landmarks)
 
-                h, w, _ = frame.shape
-                landmarks = [(int(lm.x * w), int(lm.y * h)) for lm in face_landmarks.landmark]
-
-                left_eye_indices = [33, 160, 158, 133, 153, 144]
-                right_eye_indices = [362, 385, 387, 263, 373, 380]
-
-                mouth_indices = [78, 81, 13, 311, 308, 402, 14, 87, 95, 88, 
-                                 178, 317, 82, 81, 80, 191, 88, 178, 87, 14]
-
-                left_eye = [landmarks[i] for i in left_eye_indices]
-                right_eye = [landmarks[i] for i in right_eye_indices]
-                mouth = [landmarks[i] for i in mouth_indices]
-
-                # 依據 MAR 計算邏輯，選擇對應點
-                mouth_mar_landmarks = {
-                    12: mouth[5],   # left corner
-                    13: mouth[2],   # upper center
-                    14: mouth[6],   # upper side
-                    16: mouth[4],   # right corner
-                    18: mouth[17],  # lower side
-                    19: mouth[19]   # lower center
-                }
-
-                leftEAR = eye_aspect_ratio(left_eye)
-                rightEAR = eye_aspect_ratio(right_eye)
-                ear = (leftEAR + rightEAR) / 2.0
-                mar = mouth_aspect_ratio(mouth_mar_landmarks)
-
-                if not calibration_done:
-                    calibration_ears.append(ear)
-                    frame_count += 1
-                    remaining_time = EAR_CALIBRATION_TIME - int(time.time() - calibration_start)
-                    cv2.putText(frame, f"Calibrating... {remaining_time}s",
-                                (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
-
-                    if frame_count >= CALIBRATION_FRAMES:
-                        baseline_ear = np.mean(calibration_ears)
-                        EAR_THRESHOLD = baseline_ear * 0.75
-                        calibration_done = True
-                        print(f"[INFO] EAR calibration complete. Baseline EAR: {baseline_ear:.3f}, Threshold: {EAR_THRESHOLD:.3f}")
+            if not calibration_done:
+                calibration_ears.append(ear)
+                elapsed = current_time - calibration_start
+                remaining = max(0, int(EAR_CALIBRATION_TIME - elapsed))
+                cv2.putText(frame, f"Calibrating... {remaining}s", (10, 60),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 255), 2)
+                if elapsed >= EAR_CALIBRATION_TIME:
+                    EAR_THRESHOLD = np.mean(calibration_ears) * 0.75
+                    calibration_done = True
+            else:
+                if ear < EAR_THRESHOLD:
+                    if eye_close_start_time is None:
+                        eye_close_start_time = current_time
+                    elif current_time - eye_close_start_time >= TIRED_SECONDS:
+                        shared_alert_list.append("DROWSINESS")
                 else:
-                    cv2.polylines(frame, [np.array(left_eye)], True, (0, 255, 0), 1)
-                    cv2.polylines(frame, [np.array(right_eye)], True, (0, 255, 0), 1)
-                    cv2.polylines(frame, [np.array(mouth)], True, (255, 0, 0), 1)
+                    eye_close_start_time = None
 
-                    # 眼睛疲勞偵測
-                    if ear < EAR_THRESHOLD:
-                        COUNTER += 1
-                        if COUNTER >= CONSEC_FRAMES:
-                            if not ALARM_ON:
-                                ALARM_ON = True
-                                ALARM_END_TIME = time.time() + ALERT_DURATION
-                    else:
-                        COUNTER = 0
-                        if time.time() >= ALARM_END_TIME:
-                            ALARM_ON = False
-                            # 只有在完成哈欠警示後才重置哈欠計數與狀態
-                            if YAWN_ALERT_COMPLETED:
-                                YAWN_ALARM_ON = False
-                                YAWN_COUNT = 0
-                                YAWN_ALERT_COMPLETED = False
+                if mar > MAR_OPEN_THRESHOLD and not yawn_flag:
+                    YAWN_COUNT += 1
+                    yawn_flag = True
+                elif mar < MAR_CLOSE_THRESHOLD:
+                    yawn_flag = False
 
-                    if ALARM_ON:
-                        shared_alert[0] = True
-                        cv2.putText(frame, "DROWSINESS ALERT!", (10, 60),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                if YAWN_COUNT >= YAWN_ALERT_THRESHOLD:
+                    shared_alert_list.append("YAWN")
+                    YAWN_COUNT = 0
 
-                    # 哈欠偵測，雙閾值判斷避免連續計數
-                    if mar > MAR_OPEN_THRESHOLD:
-                        if not yawn_flag:
-                            YAWN_COUNT += 1
-                            yawn_flag = True
-                    elif mar < MAR_CLOSE_THRESHOLD:
-                        yawn_flag = False
+        cv2.putText(frame, f"Yawns: {YAWN_COUNT}", (10, 100),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
-                    if YAWN_COUNT >= 3 and not YAWN_ALARM_ON:
-                        ALARM_ON = True
-                        YAWN_ALARM_ON = True
-                        ALARM_END_TIME = time.time() + ALERT_DURATION
-                        YAWN_ALERT_COMPLETED = True  # 標示已完成一次三次哈欠警示
-
-                    # 顯示數值資訊
-                    cv2.putText(frame, f"EAR: {ear:.2f}", (480, 30),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                    cv2.putText(frame, f"MAR: {mar:.2f}", (480, 60),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                    cv2.putText(frame, f"Yawns: {YAWN_COUNT}", (10, 140),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-
-            # 顯示畫面與視窗控制
-            window_name = "Drowsiness and Yawning Detection"
-            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-
-            root = tk.Tk()
-            root.withdraw()
-            screen_width = root.winfo_screenwidth()
-            screen_height = root.winfo_screenheight()
-            root.destroy()
-
-            target_width = screen_width // 2
-            target_height = screen_height // 2
-            x_offset = screen_width - target_width
-            y_offset = 0
-
-            cv2.resizeWindow(window_name, target_width, target_height)
-            cv2.moveWindow(window_name, x_offset, y_offset)
-            cv2.imshow(window_name, frame)
-
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+        try:
+            cv2.imshow("Drowsiness Detection", frame)
+            if cv2.getWindowProperty("Drowsiness Detection", cv2.WND_PROP_VISIBLE) < 1:
+                print("[INFO] OpenCV 視窗已關閉，結束程式")
                 break
+        except Exception as e:
+            print(f"[ERROR] 顯示畫面時出錯: {e}")
+            break
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            print("[INFO] 使用者按下 q 鍵，退出程式")
+            break
 
     cap.release()
     cv2.destroyAllWindows()
-

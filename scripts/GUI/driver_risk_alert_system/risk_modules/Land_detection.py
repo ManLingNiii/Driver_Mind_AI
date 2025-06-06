@@ -21,7 +21,7 @@ def smooth_line(history, new_line):
 def detect_edges(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blur, 50, 150)
+    edges = cv2.Canny(blur, 200, 250)
     return edges
 
 def region_of_interest(img):
@@ -29,8 +29,8 @@ def region_of_interest(img):
     mask = np.zeros_like(img)
     polygon = np.array([[
         (0, height),
-        (int(width * 0.4), int(height * 0.55)),
-        (int(width * 0.6), int(height * 0.55)),
+        (int(width * 0.4), int(height * 0.5)),
+        (int(width * 0.6), int(height * 0.5)),
         (width, height)
     ]])
     cv2.fillPoly(mask, polygon, 255)
@@ -38,7 +38,7 @@ def region_of_interest(img):
     return masked
 
 def detect_lines(edges):
-    raw_lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=50, minLineLength=80, maxLineGap=60)
+    raw_lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=125, minLineLength=135, maxLineGap=15)
     if raw_lines is None:
         return []
     filtered = []
@@ -47,7 +47,7 @@ def detect_lines(edges):
         if x2 == x1:
             continue
         slope = (y2 - y1) / (x2 - x1)
-        if 0.3 < abs(slope) < 5:
+        if 0.3 < abs(slope) < 1:
             filtered.append(line)
     return filtered
 
@@ -77,13 +77,13 @@ def make_coordinates(frame, line_params):
     x2 = int((y2 - intercept)/slope)
     return np.array([x1, y1, x2, y2])
 
-def draw_multicolor_lane(frame, left_line, right_line):
+def draw_multicolor_lane(frame, left_line, right_line, scale=1.0):
     """
     畫出紅橙綠三段風險區域，並保證回傳合法影像
     """
     if frame is None:
         print("[❌ draw_multicolor_lane] 警告：輸入 frame 為 None")
-        return np.zeros((720, 1280, 3), dtype=np.uint8)  # 根據預設解析度調整
+        return np.zeros((1080, 1440, 3), dtype=np.uint8)  # 根據預設解析度調整
 
     frame_copy = frame.copy()
 
@@ -97,8 +97,8 @@ def draw_multicolor_lane(frame, left_line, right_line):
         y_bottom = height
 
         red_height = int(200)
-        orange_height = 70
-        green_height = 200
+        orange_height = int(70*scale)
+        green_height = int(200*scale)
 
         red_y_top = y_bottom - red_height
         orange_y_top = red_y_top - orange_height
@@ -163,7 +163,7 @@ def get_lane_roi_dynamic(left_line, right_line, frame_shape, speed=0, scale_fact
     lane_width = abs(right_x_bot - left_x_bot)
 
     base_scale = min(max(lane_width / 400, 0.5), 0.6)
-    dynamic_scale = min(base_scale + speed * 0.005 * scale_factor, 1.0)
+    dynamic_scale = min(base_scale + speed * 0.2 * scale_factor, 1.0)
     scale = dynamic_scale
 
     red_height = int(150 * scale)
@@ -290,11 +290,13 @@ def process_frame(frame):
         left_line = smooth_line(left_line_history, raw_left)
         right_line = smooth_line(right_line_history, raw_right)
 
-        # 畫主車道區域與 lane 線條（紅橙綠）
-        frame_with_colors = draw_multicolor_lane(frame, left_line, right_line)
-
         # 建立 ROI 字典（含 side_left/right）
         roi_dict, scale = get_lane_roi_dynamic(left_line, right_line, frame.shape)
+
+        # 畫主車道區域與 lane 線條（紅橙綠）
+        frame_with_colors = draw_multicolor_lane(frame, left_line, right_line, scale)
+
+        
 
         # 場景過濾：判斷車道是否有效
         scene_valid = is_valid_lane_scene(left_line, right_line, frame.shape)
