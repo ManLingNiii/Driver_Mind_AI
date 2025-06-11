@@ -7,6 +7,9 @@ import time
 import threading
 from queue import Queue
 from collections import defaultdict, deque
+from ultralytics.utils.plotting import Colors
+colors = Colors()
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(current_dir)
@@ -14,6 +17,19 @@ from risk_modules.risk_analyzer import *
 from risk_modules.Land_detection import *
 from risk_modules.warning_controller import *
 import yaml
+
+# 自定義非紅色的顏色表（BGR格式）
+custom_colors = [
+    (0, 255, 0),     # 綠
+    (255, 255, 0),   # 青
+    (255, 0, 255),   # 紫
+    (180, 255, 255),   # 黃
+    (255, 127, 0),   # 橘
+    (128, 0, 128),   # 深紫
+    (0, 128, 255),   # 淺藍
+    (0, 100, 255),   # 天藍
+]
+
 
 class LaneTracker:
     def __init__(self, shared_alert_list):
@@ -30,10 +46,10 @@ class LaneTracker:
         self.flow_roi_top = self.risk_config['optical_flow']['roi_top_ratio']
         self.flow_roi_bottom = self.risk_config['optical_flow']['roi_bottom_ratio']
 
-        weight_path = os.path.join(current_dir, "weight", "yolov8s.pt")
+        weight_path = os.path.join(current_dir, "weight", "best.pt")
         self.model = YOLO(weight_path)
 
-        video_path = os.path.join(current_dir, "assets", "road.mp4")
+        video_path = os.path.join(current_dir, "assets", "yolo_demo.mp4")
         self.cap = cv2.VideoCapture(video_path)
         self.gray_history = deque(maxlen=3)
         self.prev_smoothed_speed = 0
@@ -75,12 +91,12 @@ class LaneTracker:
                     if left_line is not None and len(left_line) == 4:
                         pt1 = (int(left_line[0]), int(left_line[1]))
                         pt2 = (int(left_line[2]), int(left_line[3]))
-                        cv2.line(frame, pt1, pt2, (0, 255, 0), 5)
+                        #cv2.line(frame, pt1, pt2, (0, 255, 0), 5)
 
                     if right_line is not None and len(right_line) == 4:
                         pt1 = (int(right_line[0]), int(right_line[1]))
                         pt2 = (int(right_line[2]), int(right_line[3]))
-                        cv2.line(frame, pt1, pt2, (0, 255, 0), 5)
+                        #cv2.line(frame, pt1, pt2, (0, 255, 0), 5)
 
                     curr_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     self.gray_history.append(curr_gray)
@@ -113,7 +129,19 @@ class LaneTracker:
                     results = self.model.track(source=frame, imgsz=1280, persist=True, show=False, stream=False, device=0)
                     risky_objects = []
                     seen_ids = set()
-                    annotated_frame = results[0].plot()
+                    #annotated_frame = results[0].plot()
+
+                    annotated_frame = frame.copy()
+                    for box in results[0].boxes:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        cls_id = int(box.cls[0])
+                        conf = float(box.conf[0])
+                        print(f"cls_id = {cls_id}, conf = {conf}")
+
+                        color = custom_colors[cls_id % len(custom_colors)]
+                        cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), color, 2)
+
+
 
                     for r in results[0].boxes.data.cpu().numpy():
                         if len(r) < 7:
@@ -154,11 +182,11 @@ class LaneTracker:
                                 self.shared_alert.append("RISK:mid")
                             
                             print(f"⚠️ 提醒觸發！ID={track_id}, Level={level}, Score={smoothed_score:.2f}")
-                            cv2.putText(annotated_frame, f"Risk Level: {level.upper()}", (15, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+                            #cv2.putText(annotated_frame, f"Risk Level: {level.upper()}", (15, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
 
                     #annotated_frame = results[0].plot()
                     draw_risk_overlay(annotated_frame, risky_objects, roi_dict)
-                    cv2.putText(annotated_frame, f"ROI Scale: {scale:.3f}", (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
+                    #cv2.putText(annotated_frame, f"ROI Scale: {scale:.3f}", (15, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 2)
                     #cv2.putText(annotated_frame, f"Speed: {speed:.3f}", (15, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
                     
                     
@@ -194,10 +222,10 @@ class LaneTracker:
                         result_frame = self.result_dict.pop(self.next_display_id)
 
                         # 顯示處理的偵數
-                        cv2.putText(result_frame, f"Frame: {self.next_display_id}", 
-                                    (15, 100),  # 位置（你也可以改）
-                                    cv2.FONT_HERSHEY_SIMPLEX, 
-                                    0.9, (255, 255, 255), 2)
+                        #cv2.putText(result_frame, f"Frame: {self.next_display_id}", 
+                                    #(15, 100),  # 位置（你也可以改）
+                                    #cv2.FONT_HERSHEY_SIMPLEX, 
+                                    #0.9, (255, 255, 255), 2)
 
                         display_width = 1280
                         display_height = 720

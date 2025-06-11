@@ -1,61 +1,127 @@
-import cv2
-import numpy as np
-import sys
-from collections import deque
+import cv2 # OpenCV 影像處理
+import numpy as np # 數值處理
+import sys # 讀取命令列參數
+from collections import deque # 雙端佇列，保存歷史線條資訊
 
-# 儲存左右線歷史資料（最多 5 幀）
-left_line_history = deque(maxlen=5)
-right_line_history = deque(maxlen=5)
+#赫夫轉換
+
+"""
+儲存左右線歷史資料（最多 5 幀）
+建立兩個「固定長度的雙端佇列（deque）」，每個最多只能存 5 條資料
+為何要儲存5個歷史座標資料？ 
+>> 因為每一幀偵測出來的車道線都可能會有一點點晃動，為了要讓車道線平滑一點，故儲存最近5幀的線條＆平均其位置
+"""
+left_line_history = deque(maxlen=15)
+right_line_history = deque(maxlen=15)
 
 def smooth_line(history, new_line):
     """
-    平滑化車道線（用最近幾幀平均）
+    平滑化車道線，讓車道線不抖動（用最近幾幀平均）
+    history >> deque
+    new_line >> 這一幀剛剛偵測到的線條，格式是 NumPy 陣列，如 [x1, y1, x2, y2]
     """
-    if new_line is not None:
+    if new_line is not None: #如果 new_line 存在，就把它加入 history(deque舊的會被刪掉)
         history.append(new_line)
-    if not history:
+    if not history:  # 目前 history 裡還沒有任何資料，就沒辦法計算平均，只能回傳 None(程式剛啟動時)
         return None
-    avg_line = np.mean(history, axis=0).astype(int)
+    avg_line = np.mean(history, axis=0).astype(int) #對 history 中所有的線條做「逐欄位平均」，也就是把 x1, y1, x2, y2 分別平均
     return avg_line
 
 def detect_edges(frame):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    """
+    接收一張影像 frame（通常是 BGR 彩色格式）
+    目的：將影像轉換成「二值邊緣圖」，只保留邊界輪廓
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) # 將彩色影像 frame 轉換成灰階影像 gray(邊緣偵測只需要明暗變化，不需要顏色資訊)
+
+    # 使用高斯模糊（Gaussian Blur）濾波影像，(5, 5) 是濾波核大小 (用意是去除雜訊，防止邊緣偵測被小細節干擾)
+    # 0 表示讓 OpenCV 自動根據核大小決定標準差（σ）
     blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blur, 200, 250)
+
+    # 使用 Canny 邊緣偵測演算法，找出邊界 	50 是低閾值（弱邊緣起始值），150 是高閾值（強邊緣保留值）
+    edges = cv2.Canny(blur, 50, 150)
     return edges
 
 def region_of_interest(img):
+    """
+    定義車道區域（只關注下半部）
+    """
+    # 取得影像的高度與寬度。img 是一張灰階影像（從 detect_edges() 回傳的邊緣圖）
     height, width = img.shape
+
+    # 建立一個與原圖 相同大小、全為 0（黑色）的遮罩圖像，準備在這張圖上畫出我們關注的區域
     mask = np.zeros_like(img)
+
+    # 定義一個四邊形區域的頂點座標（以一個多邊形 polygon 表示），用來包住車道的形狀。這裡畫的是一個梯形區域，以畫面下方中間為重點。
     polygon = np.array([[
-        (0, height),
-        (int(width * 0.4), int(height * 0.5)),
-        (int(width * 0.6), int(height * 0.5)),
-        (width, height)
+        (0, height), # 左下角
+        (int(width * 0.4), int(height * 0.55)), # 左上角（靠中間）
+        (int(width * 0.6), int(height * 0.55)), # 右上角（靠中間）
+        (width, height) # 右下角
     ]])
+
+    # 用 OpenCV 函數 fillPoly() 在 mask 上畫出這個多邊形，並將它塗成白色（255）。其餘區域仍是黑色（0）。
     cv2.fillPoly(mask, polygon, 255)
+
+    # 對兩張圖片做「逐像素的 AND 運算」，用來保留同時為非零的區域。
+    # 保留「既在邊緣圖像上是白色，又在 mask 中是 ROI 的區域」
     masked = cv2.bitwise_and(img, mask)
-    return masked
+    return masked # 回傳處理後的結果，即只保留關注區域的圖像（其餘區域全為黑）
 
 def detect_lines(edges):
-    raw_lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=125, minLineLength=135, maxLineGap=15)
+    """
+    HoughLinesP 找出所有候選線條 + 斜率篩選
+    從經過邊緣偵測（Canny）後的影像中找出「直線」，並進行斜率篩選，只留下我們關心的線段（如斜向的車道線）
+    """
+
+    """
+    使用 HoughLinesP（概率霍夫變換） 偵測影像中的所有可能線段
+    此方法適合找直線，常用於偵測車道線、路邊線等。回傳的是一個 list，每一項是 [[x1, y1, x2, y2]] 的 numpy 陣列，代表一條線段。
+    """
+    raw_lines = cv2.HoughLinesP(edges, # 邊緣影像（二值圖）
+                                1, # ρ (rho)：霍夫空間的距離解析度（1 像素）
+                                np.pi / 180, # θ (theta)：角度解析度，這裡設為 1 度（以弧度為單位）
+                                threshold=50, # 閾值：票數（累積的投票數）超過這個值才視為一條線
+                                minLineLength=80, # 線段最小長度（像素）：太短的不算線
+                                maxLineGap=60) # 同一條線容許的中斷間距：小間斷視為同一條線
+
     if raw_lines is None:
-        return []
+        return [] # 如果找不到任何線段（raw_lines 為 None），就直接回傳空列表，避免後續報錯。
+
+    # 建立一個空列表，用來存放通過斜率條件篩選後的有效線段。
     filtered = []
+
+    # 逐條遍歷偵測出來的線段，每一條線段由起點 (x1, y1) 和終點 (x2, y2) 表示。
     for line in raw_lines:
         x1, y1, x2, y2 = line[0]
+
+        # 這條線是垂直線（因為 x 不變，代表斜率為無限大），容易造成除以 0 的錯誤，或者在應用中不需要垂直線，所以直接跳過。
         if x2 == x1:
             continue
+
+        # 計算這條線的斜率。slope = Δy / Δx。這能幫助我們過濾掉太水平或太垂直的線條。
+        # 排除太水平的線（|slope| < 0.3）
+        # 排除太垂直的線（|slope| > 5）
         slope = (y2 - y1) / (x2 - x1)
-        if 0.3 < abs(slope) < 1:
+        if 0.3 < abs(slope) < 5:
             filtered.append(line)
-    return filtered
+
+    return filtered # 回傳所有符合條件的車道候選線段(清單)。
 
 def average_slope_intercept(lines):
+    """
+    用最小平方擬合左右線
+    定義一個函數 average_slope_intercept()，參數 lines 是先前用 cv2.HoughLinesP 偵測出來的多條線段（直線）
+    """
+
+    # 建立兩個清單：用來分別存放左邊與右邊的線條斜率與截距。會根據斜率正負分配。
     left_lines = []
     right_lines = []
+
+    # 逐一取出每一條線（注意 line 是一個 list 包住 [x1, y1, x2, y2]），把座標拆解出來
     for line in lines:
         x1, y1, x2, y2 = line[0]
+
         parameters = np.polyfit((x1,x2), (y1,y2), 1)
         slope, intercept = parameters
         if slope < 0:
@@ -66,7 +132,37 @@ def average_slope_intercept(lines):
     right_avg = np.average(right_lines, axis=0) if right_lines else None
     return left_avg, right_avg
 
+def fit_quadratic_curve(lines, side="left"):
+    x_points, y_points = [], []
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        if x2 == x1:
+            continue
+        slope = (y2 - y1) / (x2 - x1)
+        if (side == "left" and slope < 0) or (side == "right" and slope > 0):
+            x_points.extend([x1, x2])
+            y_points.extend([y1, y2])
+    if len(x_points) < 2:
+        return None
+    degree = 2 if len(x_points) >= 6 else 1
+    coeffs = np.polyfit(y_points, x_points, degree)
+    return np.poly1d(coeffs)
+
+def draw_curve_line(frame, poly_fn, color=(255, 255, 0)):
+    if poly_fn is None:
+        return
+    h = frame.shape[0]
+    y_vals = np.linspace(int(h * 0.6), h, 100)
+    x_vals = poly_fn(y_vals)
+    points = np.array([[int(x), int(y)] for x, y in zip(x_vals, y_vals)
+                       if 0 <= x < frame.shape[1]], dtype=np.int32)
+    for i in range(len(points) - 1):
+        cv2.line(frame, tuple(points[i]), tuple(points[i + 1]), color, 3)
+
 def make_coordinates(frame, line_params):
+    """
+    根據直線參數計算端點座標
+    """
     height, width, _ = frame.shape
     if line_params is None:
         return None
@@ -77,18 +173,18 @@ def make_coordinates(frame, line_params):
     x2 = int((y2 - intercept)/slope)
     return np.array([x1, y1, x2, y2])
 
-def draw_multicolor_lane(frame, left_line, right_line, scale=1.0):
+def draw_multicolor_lane(frame, left_line, right_line):
     """
     畫出紅橙綠三段風險區域，並保證回傳合法影像
     """
     if frame is None:
-        print("[❌ draw_multicolor_lane] 警告：輸入 frame 為 None")
-        return np.zeros((1080, 1440, 3), dtype=np.uint8)  # 根據預設解析度調整
+        print("[draw_multicolor_lane] 警告：輸入 frame 為 None")
+        return np.zeros((720, 1280, 3), dtype=np.uint8)  # 根據預設解析度調整
 
     frame_copy = frame.copy()
 
     if left_line is None or right_line is None:
-        print("[⚠️ draw_multicolor_lane] 警告：缺少車道線，僅回傳原圖")
+        print("[draw_multicolor_lane] 警告：缺少車道線，僅回傳原圖")
         return frame_copy
 
     try:
@@ -97,8 +193,8 @@ def draw_multicolor_lane(frame, left_line, right_line, scale=1.0):
         y_bottom = height
 
         red_height = int(200)
-        orange_height = int(70*scale)
-        green_height = int(200*scale)
+        orange_height = 70
+        green_height = 200
 
         red_y_top = y_bottom - red_height
         orange_y_top = red_y_top - orange_height
@@ -163,7 +259,7 @@ def get_lane_roi_dynamic(left_line, right_line, frame_shape, speed=0, scale_fact
     lane_width = abs(right_x_bot - left_x_bot)
 
     base_scale = min(max(lane_width / 400, 0.5), 0.6)
-    dynamic_scale = min(base_scale + speed * 0.2 * scale_factor, 1.0)
+    dynamic_scale = min(base_scale + speed * 0.005 * scale_factor, 1.0)
     scale = dynamic_scale
 
     red_height = int(150 * scale)
@@ -202,7 +298,7 @@ def get_lane_roi_dynamic(left_line, right_line, frame_shape, speed=0, scale_fact
 
     # 左右切入區延伸寬度（以車道寬延伸 0.9）
     side_offset = int(lane_width * 0.9)
-    side_y_top = max(red_y_top - 100, 0)  # 上緣再往上拉長 100px
+    side_y_top = max(red_y_top - 100, 0)  # 上緣再往上拉長 80px
     right_x_side_bot = min(right_x_red_bot + side_offset, width - 1)
     right_x_side_top = min(right_x_red_top + side_offset, width - 1)
     left_x_side_bot = max(left_x_red_bot - side_offset, 0)
@@ -275,6 +371,9 @@ def is_valid_lane_scene(left_line, right_line, frame_shape):
     return True
 
 def process_frame(frame):
+    """
+    處理單幀主流程：包含直線與曲線擬合
+    """
     global left_line_history, right_line_history
 
     try:
@@ -282,38 +381,42 @@ def process_frame(frame):
         edges = detect_edges(frame)
         roi = region_of_interest(edges)
         lines = detect_lines(roi)
-        left_params, right_params = average_slope_intercept(lines)
 
-        # 平滑處理線條
+        # ============ 線性擬合（備用） ============
+        left_params, right_params = average_slope_intercept(lines)
         raw_left = make_coordinates(frame, left_params)
         raw_right = make_coordinates(frame, right_params)
         left_line = smooth_line(left_line_history, raw_left)
         right_line = smooth_line(right_line_history, raw_right)
 
-        # 建立 ROI 字典（含 side_left/right）
+        # ============ 曲線擬合 ============
+        left_poly = fit_quadratic_curve(lines, side="left")
+        right_poly = fit_quadratic_curve(lines, side="right")
+
+        # ============ 畫主車道區域（紅橙綠） ============
+        frame_with_colors = draw_multicolor_lane(frame, left_line, right_line)
+
+        # ============ 畫曲線（若擬合成功） ============
+        if left_poly is not None:
+            draw_curve_line(frame_with_colors, left_poly, color=(0, 255, 255))  # 左側黃色線
+        if right_poly is not None:
+            draw_curve_line(frame_with_colors, right_poly, color=(0, 255, 255))  # 右側黃色線
+
+        # ============ 動態 ROI 與風險切入區 ============
         roi_dict, scale = get_lane_roi_dynamic(left_line, right_line, frame.shape)
-
-        # 畫主車道區域與 lane 線條（紅橙綠）
-        frame_with_colors = draw_multicolor_lane(frame, left_line, right_line, scale)
-
-        
-
-        # 場景過濾：判斷車道是否有效
         scene_valid = is_valid_lane_scene(left_line, right_line, frame.shape)
 
-        # 畫左側切入區（橘色）
         if "side_left" in roi_dict:
             overlay = frame_with_colors.copy()
-            cv2.fillPoly(overlay, [roi_dict["side_left"]], (0, 140, 255))  # BGR 橘
+            cv2.fillPoly(overlay, [roi_dict["side_left"]], (0, 140, 255))
             frame_with_colors = cv2.addWeighted(overlay, 0.4, frame_with_colors, 0.6, 0)
 
-        # 畫右側切入區（橘色）
         if "side_right" in roi_dict:
             overlay = frame_with_colors.copy()
-            cv2.fillPoly(overlay, [roi_dict["side_right"]], (0, 140, 255))  # BGR 橘
+            cv2.fillPoly(overlay, [roi_dict["side_right"]], (0, 140, 255))
             frame_with_colors = cv2.addWeighted(overlay, 0.4, frame_with_colors, 0.6, 0)
 
-        # 異常 fallback
+        # ============ 錯誤處理備援 ============
         if frame_with_colors is None:
             print("[❌ process_frame] draw_multicolor_lane 回傳 None，回傳原圖")
             frame_with_colors = frame.copy()

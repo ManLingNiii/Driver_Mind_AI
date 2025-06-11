@@ -1,4 +1,3 @@
-
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -27,19 +26,38 @@ def start_drowsiness_detection(shared_alert_list):
 
     TIRED_SECONDS = 2.0
     EAR_CALIBRATION_TIME = 3
-    MAR_OPEN_THRESHOLD = 1.2
+    MAR_OPEN_THRESHOLD = 1.4
     MAR_CLOSE_THRESHOLD = 0.7
     YAWN_ALERT_THRESHOLD = 3
+    ALERT_DISPLAY_DURATION = 3  # 警示停留秒數
 
+    # 初始化校準與狀態
     calibration_ears = []
     calibration_done = False
     calibration_start = time.time()
     EAR_THRESHOLD = None
-
     YAWN_COUNT = 0
     yawn_flag = False
-
     eye_close_start_time = None
+    last_alert_time = 0
+    last_alert_message = ""
+
+    def reset_state():
+        nonlocal calibration_ears, calibration_done, calibration_start, EAR_THRESHOLD
+        nonlocal YAWN_COUNT, yawn_flag, eye_close_start_time
+        nonlocal last_alert_time, last_alert_message
+        calibration_ears = []
+        calibration_done = False
+        calibration_start = time.time()
+        EAR_THRESHOLD = None
+        YAWN_COUNT = 0
+        yawn_flag = False
+        eye_close_start_time = None
+        last_alert_time = 0
+        last_alert_message = ""
+        print("[INFO] 校準與狀態已重置")
+
+    reset_state()
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -86,6 +104,8 @@ def start_drowsiness_detection(shared_alert_list):
                         eye_close_start_time = current_time
                     elif current_time - eye_close_start_time >= TIRED_SECONDS:
                         shared_alert_list.append("DROWSINESS")
+                        last_alert_time = current_time
+                        last_alert_message = "DROWSINESS"
                 else:
                     eye_close_start_time = None
 
@@ -97,8 +117,19 @@ def start_drowsiness_detection(shared_alert_list):
 
                 if YAWN_COUNT >= YAWN_ALERT_THRESHOLD:
                     shared_alert_list.append("YAWN")
+                    last_alert_time = current_time
+                    last_alert_message = "YAWN"
                     YAWN_COUNT = 0
 
+        # 中央顯示大字警示（持續幾秒）
+        if current_time - last_alert_time < ALERT_DISPLAY_DURATION:
+            text_size = cv2.getTextSize(last_alert_message, cv2.FONT_HERSHEY_SIMPLEX, 2.0, 4)[0]
+            text_x = int((frame.shape[1] - text_size[0]) / 2)
+            text_y = 50
+            cv2.putText(frame, last_alert_message, (text_x, text_y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 255), 4)
+
+        # 顯示打哈欠次數
         cv2.putText(frame, f"Yawns: {YAWN_COUNT}", (10, 100),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 0), 2)
 
@@ -111,9 +142,12 @@ def start_drowsiness_detection(shared_alert_list):
             print(f"[ERROR] 顯示畫面時出錯: {e}")
             break
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
             print("[INFO] 使用者按下 q 鍵，退出程式")
             break
+        elif key == 32:  # 空白鍵重置
+            reset_state()
 
     cap.release()
     cv2.destroyAllWindows()

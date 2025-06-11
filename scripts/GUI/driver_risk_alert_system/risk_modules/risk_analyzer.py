@@ -115,7 +115,7 @@ def analyze_risk(track_id, center, roi_level, speed, is_jump, vx=0):
 
     # 核心風險分數公式
     horiz_speed_weight = 0.5
-    score = base + stay_weight * stay + gamma * log_speed + 0.5 * abs(vx)
+    score = base + stay_weight * stay + gamma * log_speed + gamma * abs(vx)
 
     # 衰退處理（分級前）
     score = decay_static_score(track_id, score, speed, risk_config)
@@ -141,21 +141,26 @@ def draw_risk_overlay(frame, risky_objects, roi_dict):
         overlay = frame.copy()
         cv2.fillPoly(overlay, [roi_dict["side_right"]], color=(0, 165, 255))  # 橘色 BGR
         alpha = 0.4
-        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        #cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
     # 畫 side_left 色塊（橘色）
     if "side_left" in roi_dict:
         overlay = frame.copy()
         cv2.fillPoly(overlay, [roi_dict["side_left"]], color=(0, 165, 255))
         alpha = 0.4
-        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        #cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
     for (x1, y1, x2, y2, track_id, risk_score, risk_level) in risky_objects:
-        if risk_level in ["high", "side_right", "side_left"]:
-            color = (0, 0, 255)
-            cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(frame, f"RISK ID: {track_id} ({risk_score:.1f})", (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        if risk_level == "high":
+            color = (0, 0, 255)  # 紅色
+        elif risk_level == "mid":
+            color = (0, 255, 255)  # 黃色
+        else:
+            continue  # 低風險或其他不畫
+
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(frame, f"RISK ID: {track_id} ({risk_score:.1f})", (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
     # # 畫高風險物件的紅框與 ID 分數
     # for (x1, y1, x2, y2, track_id, risk_score, risk_level) in risky_objects:
