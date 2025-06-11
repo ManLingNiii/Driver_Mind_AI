@@ -33,6 +33,35 @@ Driver_Mind_AI/
 ├── models/                    # 模型儲存區
 ├── notebooks/                 # EDA 與實驗記錄
 ├── scripts/                   # 模型訓練、推論主程式
+│   └── GUI/
+│       ├── audio_cache/
+│       │   ├── drowsiness_alert.mp3
+│       │   ├── high_risk_alert.mp3
+│       │   ├── mid_risk_alert.mp3
+│       │   └── yawn_alert.mp3
+│       ├── driver_risk_alert_system/
+│       │   ├── assets/
+│       │   ├── risk_modules/
+│       │   │   ├── __init__.py
+│       │   │   ├── Land_detection.py
+│       │   │   ├── risk_analyzer.py
+│       │   │   ├── risk_params.py
+│       │   │   ├── risk_plotter.py
+│       │   │   └── warning_controller.py
+│       │   ├── .gitignore
+│       │   ├── export_models.py
+│       │   ├── lane_tracker_module.py
+│       │   └── README.md
+│       ├── fatigue_detection/
+│       │   ├── app.py
+│       │   ├── dlib-19.24.99-cp312-cp312-win_amd64.whl
+│       │   ├── drowsiness_detection_mediapipe.py
+│       │   ├── face_detection_inatall.txt
+│       │   ├── README.md
+│       │   ├── requirements.txt
+│       │   └── shape_predictor_68_face_landmarks.dat
+│       ├── audio_player.py
+│       └── main_opencv_gui.py
 ├── .gitignore
 ├── .gitattributes
 ├── LICENSE
@@ -107,8 +136,10 @@ yolo task=detect mode=train model=yolov8n.pt data=BDD100K_YOLO/bdd10k.yaml epoch
 
 ## 語音與視覺警示模組（開發中）
 
-* 使用 `pyttsx3` 語音輸出警示語句
+* 使用 `pygame` 語音輸出警示語句
 * 使用 `OpenCV` 顯示動態視覺 UI
+* 使用 `ultralytics` 辨識物件
+* 使用 `mediapipe` 辨識臉部特徵 
 
 ---
 
