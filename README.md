@@ -34,12 +34,12 @@ Driver_Mind_AI/
 ├── notebooks/                 # EDA 與實驗記錄
 ├── scripts/                   # 模型訓練、推論主程式
 │   └── GUI/
-│       ├── audio_cache/
+│       ├── audio_cache/        # 警示語音檔
 │       │   ├── drowsiness_alert.mp3
 │       │   ├── high_risk_alert.mp3
 │       │   ├── mid_risk_alert.mp3
 │       │   └── yawn_alert.mp3
-│       ├── driver_risk_alert_system/
+│       ├── driver_risk_alert_system/       # 路況偵測
 │       │   ├── assets/
 │       │   ├── risk_modules/
 │       │   │   ├── __init__.py
@@ -52,7 +52,7 @@ Driver_Mind_AI/
 │       │   ├── export_models.py
 │       │   ├── lane_tracker_module.py
 │       │   └── README.md
-│       ├── fatigue_detection/
+│       ├── fatigue_detection/      # 疲勞偵測
 │       │   ├── app.py
 │       │   ├── dlib-19.24.99-cp312-cp312-win_amd64.whl
 │       │   ├── drowsiness_detection_mediapipe.py
@@ -61,7 +61,7 @@ Driver_Mind_AI/
 │       │   ├── requirements.txt
 │       │   └── shape_predictor_68_face_landmarks.dat
 │       ├── audio_player.py
-│       └── main_opencv_gui.py
+│       └── main_opencv_gui.py      # 啟動檔
 ├── .gitignore
 ├── .gitattributes
 ├── LICENSE
@@ -143,7 +143,7 @@ yolo task=detect mode=train model=yolov8n.pt data=BDD100K_YOLO/bdd10k.yaml epoch
 
 ---
 
-## 類別定義（共 6 類）
+## 類別定義（共 5 類）
 
 | 類別名稱            | 類別編號 |
 | --------------- | ---- |
