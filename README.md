@@ -83,9 +83,7 @@ Driver_Mind_AI/
 建議使用 Conda 建立處理環境：
 
 ```bash
-conda create -n drivermind_ai python=3.12
-conda activate drivermind_ai
-pip install -r requirements.txt
+conda env create -f environment.yml
 ```
 
 ---
