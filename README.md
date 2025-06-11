@@ -152,7 +152,6 @@ yolo task=detect mode=train model=yolov8n.pt data=BDD100K_YOLO/bdd10k.yaml epoch
 | truck ( 含 bus ) | 2    |
 | motor           | 3    |
 | bike            | 4    |
-| rider           | 5    |
 
 ---
 
