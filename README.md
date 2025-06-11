@@ -74,7 +74,7 @@ Driver_Mind_AI/
 
 下圖展示本專案的資料夾結構與主要組件流程，包含數據處理模組、YOLOv8 訓練配置與輸出對應。
 
-![專案架構圖](docs/images/architecture_v1.png)
+![專案架構圖](docs/images/architecture_v2.png)
 
 ---
 
