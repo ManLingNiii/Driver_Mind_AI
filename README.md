@@ -81,12 +81,12 @@ Driver_Mind_AI/
 ## 安裝方式
 
 建議使用 Conda 建立處理環境：
-
+虛擬環境名稱:driver_mind_AI
 
 ```bash
 conda env create -f environment.yml
 ```
-虛擬環境名稱:driver_mind_AI
+
 ---
 
 ## 資料準備
