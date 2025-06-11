@@ -151,3 +151,8 @@ def start_drowsiness_detection(shared_alert_list):
 
     cap.release()
     cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    from multiprocessing import Manager
+    shared_alert_list = Manager().list()
+    start_drowsiness_detection(shared_alert_list)
