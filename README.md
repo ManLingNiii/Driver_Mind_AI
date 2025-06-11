@@ -80,7 +80,7 @@ Driver_Mind_AI/
 
 ## 安裝方式
 
-建議使用 Conda 建立處理環境：
+建議使用 Conda 建立處理環境：\n
 虛擬環境名稱:driver_mind_AI
 
 ```bash
