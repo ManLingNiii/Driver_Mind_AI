@@ -134,12 +134,12 @@ yolo task=detect mode=train model=yolov8n.pt data=BDD100K_YOLO/bdd10k.yaml epoch
 
 ---
 
-## 語音與視覺警示模組（開發中）
+## 語音與視覺警示模組
 
 * 使用 `pygame` 語音輸出警示語句
 * 使用 `OpenCV` 顯示動態視覺 UI
 * 使用 `ultralytics` 辨識物件
-* 使用 `mediapipe` 辨識臉部特徵 
+* 使用 `mediapipe` 辨識臉部特徵
 
 ---
 
