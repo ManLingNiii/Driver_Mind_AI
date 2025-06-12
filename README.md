@@ -109,6 +109,15 @@ BDD10K/
 
 ---
 
+## 資料準備
+
+請在colab或jupyter上執行：
+`YOLOv8 模型訓練模組.ipynb`
+`dataset_eda.ipynb`
+
+
+---
+
 ## 標準轉換 (JSON → YOLO)
 
 執行：
