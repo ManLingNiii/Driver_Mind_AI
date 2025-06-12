@@ -253,4 +253,3 @@ class LaneTracker:
         self.cap.release()
         cv2.destroyAllWindows()
         infer_thread.join()
-
