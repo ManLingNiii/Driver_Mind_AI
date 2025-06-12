@@ -39,11 +39,26 @@ driver-risk-alert-system/
 
 ---
 
-## 執行方式
+## ▶️ 執行方式
+
+請執行主程式（需搭配 `assets/yolo_demo.mp4` 示範影片）：
 
 ```bash
-python track_with_analytics.py  # 執行後會生成 demo.mp4 分析影片
+python main_opencv_gui.py
 ```
+
+按鍵說明：
+- `q`：退出
+- `空白鍵`：暫停/繼續顯示畫面
+
+---
+
+## 🖼 顯示畫面內容
+
+- 物件邊框 + 類別 + 追蹤 ID
+- 紅/橘/綠風險區域（高/中/低）
+- 當物件進入中高風險區並速度/時間達標時，畫面顯示紅黃框警示與 ID
+- 支援左右切入區域偵測與標色（橘色）
 
 ---
 
