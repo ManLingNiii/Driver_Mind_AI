@@ -91,20 +91,11 @@ conda env create -f environment.yml
 
 ## 資料準備
 
-請自行下載 BDD10K dataset（DataSet Ninja 版本），並放置於 Driver_Mind_AI/BDD10K 資料夾下。
-下載連結：https://datasetninja.com/bdd100k-10k
+請前往roboflow下載資料集： 
+
 
 ```
-BDD10K/
-├── train/
-│   ├── img/
-│   └── ann/
-├── val/
-│   ├── img/
-│   └── ann/
-└── test/
-    ├── img/
-    └── ann/
+https://universe.roboflow.com/hanhan27/taiwan-traffic-dataset-v3.0
 ```
 
 ---
