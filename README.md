@@ -103,7 +103,7 @@ https://universe.roboflow.com/hanhan27/taiwan-traffic-dataset-v3.0
 ## 資料訓練
 
 請在colab或jupyter上執行：<br>
-`YOLOv8 模型訓練模組.ipynb`
+`YOLOv8 模型訓練模組.ipynb`<br>
 `dataset_eda.ipynb`
 
 
