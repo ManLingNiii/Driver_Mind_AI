@@ -109,7 +109,7 @@ BDD10K/
 
 ---
 
-## 資料準備
+## 資料訓練
 
 請在colab或jupyter上執行：<br>
 `YOLOv8 模型訓練模組.ipynb`
